@@ -35,17 +35,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS employees (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nama TEXT UNIQUE,
-                job_id INTEGER
-            );
-            ''',
-            commit=True,
-        )
-        self._execute(
-            '''
-            CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                job_name TEXT,
-                description TEXT
+                job_name TEXT
             );
             ''',
             commit=True,
@@ -88,7 +78,7 @@ class Database:
             '''
             CREATE TABLE IF NOT EXISTS laporan (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                jobs_employees_id INTEGER,
+                tasks_employees_id INTEGER,
                 user_id TEXT,
                 waktu TEXT
             );
@@ -109,10 +99,6 @@ class Database:
         self._ensure_column_exists("laporan", "notes", "TEXT")
 
         self._execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_job_name_unique ON jobs(job_name)",
-            commit=True,
-        )
-        self._execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_employees_unique ON tasks_employees(employee_id, task_id)",
             commit=True,
         )
@@ -121,8 +107,8 @@ class Database:
             commit=True,
         )
 
-    def get_employees(self) -> List[Tuple[int, str]]:
-        cursor = self._execute("SELECT id, nama FROM employees ORDER BY nama")
+    def get_employees(self) -> List[Tuple[int, str, str]]:
+        cursor = self._execute("SELECT id, nama, job_name FROM employees ORDER BY nama")
         return cursor.fetchall()
 
     def get_employee_name(self, employee_id: int) -> Optional[str]:
@@ -136,44 +122,27 @@ class Database:
         return row[0] if row else None
 
     def add_employee(self, name: str) -> bool:
+        data_pecah = name.split("|")
+        if len(data_pecah) < 2:
+            return False  # Format tidak sesuai, harus ada nama dan kategori
+        name = data_pecah[0].strip()
+        category = data_pecah[1].strip()
         try:
-            self._execute("INSERT INTO employees (nama) VALUES (?)", (name,), commit=True)
+            self._execute("INSERT INTO employees (nama, job_name) VALUES (?, ?)", (name, category), commit=True)
             return True
         except sqlite3.IntegrityError:
             return False
 
     def update_employee(self, employee_id: int, new_name: str) -> bool:
+        data_pecah = new_name.split("|")
+        if len(data_pecah) < 2:
+            return False  # Format tidak sesuai, harus ada nama dan kategori
+        new_name = data_pecah[0].strip()
+        category = data_pecah[1].strip()
         try:
             self._execute(
-                "UPDATE employees SET nama=? WHERE id=?",
-                (new_name, employee_id),
-                commit=True,
-            )
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    def get_jobs(self) -> List[Tuple[int, str]]:
-        cursor = self._execute("SELECT id, job_name FROM jobs ORDER BY job_name")
-        return cursor.fetchall()
-
-    def get_job_name(self, job_id: int) -> Optional[str]:
-        cursor = self._execute("SELECT job_name FROM jobs WHERE id=?", (job_id,))
-        row = cursor.fetchone()
-        return row[0] if row else None
-
-    def add_job(self, job_name: str) -> bool:
-        try:
-            self._execute("INSERT INTO jobs (job_name) VALUES (?)", (job_name,), commit=True)
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    def update_job(self, job_id: int, new_job_name: str) -> bool:
-        try:
-            self._execute(
-                "UPDATE jobs SET job_name=? WHERE id=?",
-                (new_job_name, job_id),
+                "UPDATE employees SET nama=?, job_name=? WHERE id=?",
+                (new_name, category, employee_id),
                 commit=True,
             )
             return True
@@ -328,10 +297,11 @@ class Database:
         cursor = self._execute(
             f"""
             SELECT
+                waktu,
                 e.nama,
                 t.task_name,
-                SUM(COALESCE(l.qty, 0)) AS total_qty,
-                SUM(COALESCE(l.qty, 0) * COALESCE(l.wage_per_unit, 0)) AS total_pay
+                COALESCE(l.qty, 0) AS qty,
+                COALESCE(l.qty, 0) * COALESCE(l.wage_per_unit, 0) AS pay
             FROM laporan l
             JOIN employees e ON e.id = l.employee_id
             JOIN tasks t ON t.id = l.task_id
@@ -340,7 +310,6 @@ class Database:
               AND l.qty IS NOT NULL
               AND l.wage_per_unit IS NOT NULL
               {employee_filter_sql}
-            GROUP BY e.id, t.id
             ORDER BY e.nama, t.task_name
             """,
             tuple(params),

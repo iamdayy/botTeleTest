@@ -42,13 +42,13 @@ class WorkReportHandlers:
                 return
 
             if call.data == "add_employee":
-                msg = self.bot.send_message(call.message.chat.id, "👤 Masukkan nama karyawan baru:")
+                msg = self.bot.send_message(call.message.chat.id, "👤 Masukkan nama karyawan baru: (Format: Nama Lengkap | Kategori)")
                 self.bot.register_next_step_handler(msg, self.simpan_karyawan_baru)
                 return
 
             if call.data.startswith("edit_emp_"):
                 emp_id = int(call.data.split("_")[2])
-                msg = self.bot.send_message(call.message.chat.id, "👤 Masukkan nama baru untuk karyawan:")
+                msg = self.bot.send_message(call.message.chat.id, "👤 Masukkan nama baru untuk karyawan: (Format: Nama Lengkap | Kategori)")
                 self.bot.register_next_step_handler(msg, self.simpan_edit_karyawan, emp_id)
                 return
 
@@ -59,7 +59,7 @@ class WorkReportHandlers:
             if call.data == "add_task":
                 msg = self.bot.send_message(
                     call.message.chat.id,
-                    "📋 Masukkan data task baru dengan format: Nama Task | UpahPerUnit\nContoh: Jahit Kemeja | 5000",
+                    "📋 Masukkan data pekerjaan baru dengan format: Nama Pekerjaan | UpahPerUnit\nContoh: Jahit Kemeja | 5000",
                 )
                 self.bot.register_next_step_handler(msg, self.simpan_task_baru)
                 return
@@ -68,7 +68,7 @@ class WorkReportHandlers:
                 task_id = int(call.data.split("_")[2])
                 msg = self.bot.send_message(
                     call.message.chat.id,
-                    "📋 Masukkan data task baru dengan format: Nama Task | UpahPerUnit",
+                    "📋 Masukkan data pekerjaan baru dengan format: Nama Pekerjaan | UpahPerUnit\nContoh: Jahit Kemeja | 5000",
                 )
                 self.bot.register_next_step_handler(msg, self.simpan_edit_task, task_id)
                 return
@@ -81,10 +81,6 @@ class WorkReportHandlers:
                 lap_id = int(call.data.split("_")[2])
                 msg = self.bot.send_message(call.message.chat.id, "📝 Masukkan detail laporan baru:")
                 self.bot.register_next_step_handler(msg, self.simpan_edit_laporan, lap_id)
-                return
-
-            if call.data.startswith("assign_job_"):
-                self._handle_assign_job(call)
                 return
 
             if call.data.startswith("inputtask_"):
@@ -168,9 +164,9 @@ class WorkReportHandlers:
     def _send_edit_menu(self, chat_id: int):
         markup = types.InlineKeyboardMarkup(row_width=1)
         btn_edit_employee = types.InlineKeyboardButton("Edit Data Karyawan", callback_data="edit_employee")
-        btn_edit_jobs = types.InlineKeyboardButton("Edit Data Task & Upah", callback_data="edit_tasks")
+        btn_edit_tasks = types.InlineKeyboardButton("Edit Data Pekerjaan & Upah", callback_data="edit_tasks")
         btn_edit_laporan = types.InlineKeyboardButton("Edit Data Laporan", callback_data="edit_laporan")
-        markup.add(btn_edit_employee, btn_edit_jobs, btn_edit_laporan)
+        markup.add(btn_edit_employee, btn_edit_tasks, btn_edit_laporan)
         self.bot.send_message(chat_id, "🔧 Pilih data yang ingin Anda edit:", reply_markup=markup)
 
     def _navigation_markup(self, back_callback: str):
@@ -191,8 +187,12 @@ class WorkReportHandlers:
             return
 
         markup = types.InlineKeyboardMarkup(row_width=2)
-        for emp_id, nama in employees:
-            markup.add(types.InlineKeyboardButton(nama, callback_data=f"pilih_{action}_{emp_id}"))
+        for emp_id, nama, job_name in employees:
+            markup.add(types.InlineKeyboardButton(f"{nama} ({job_name})", callback_data=f"pilih_{action}_{emp_id}"))
+        
+        nav = self._navigation_markup("nav_main")
+        for row in nav.keyboard:
+            markup.row(*row)
 
         self.bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -216,16 +216,10 @@ class WorkReportHandlers:
             return
 
         if action == "jahit":
-            assigned_tasks = self.db.get_assigned_tasks_for_employee(employee_id)
-            if not assigned_tasks:
-                self.bot.send_message(
-                    call.message.chat.id,
-                    "⚠️ Karyawan ini belum punya task. Assign task dulu dari menu Edit Data.",
-                )
-                return
+            tasks = self.db.get_tasks()
 
             markup = types.InlineKeyboardMarkup(row_width=1)
-            for task_id, task_name, wage in assigned_tasks:
+            for task_id, task_name, wage in tasks:
                 label = f"{task_name} (default upah: {self._format_rupiah(wage)})"
                 markup.add(
                     types.InlineKeyboardButton(
@@ -233,9 +227,12 @@ class WorkReportHandlers:
                         callback_data=f"inputtask_{employee_id}_{task_id}",
                     )
                 )
+            nav = self._navigation_markup("nav_main")
+            for row in nav.keyboard:
+                markup.row(*row)
             self.bot.send_message(
                 call.message.chat.id,
-                f"👤 Nama: {nama_karyawan}\n📌 Pilih task yang dikerjakan:",
+                f"👤 Nama: {nama_karyawan}\n📌 Pilih pekerjaan yang dikerjakan:",
                 reply_markup=markup,
             )
             return
@@ -251,9 +248,9 @@ class WorkReportHandlers:
     def _show_edit_menu(self, call: types.CallbackQuery):
         markup = types.InlineKeyboardMarkup(row_width=1)
         btn_edit_employee = types.InlineKeyboardButton("Edit Data Karyawan", callback_data="edit_employee")
-        btn_edit_jobs = types.InlineKeyboardButton("Edit Data Task & Upah", callback_data="edit_tasks")
+        btn_edit_tasks = types.InlineKeyboardButton("Edit Data Pekerjaan & Upah", callback_data="edit_tasks")
         btn_edit_laporan = types.InlineKeyboardButton("Edit Data Laporan", callback_data="edit_laporan")
-        markup.add(btn_edit_employee, btn_edit_jobs, btn_edit_laporan)
+        markup.add(btn_edit_employee, btn_edit_tasks, btn_edit_laporan)
         self.bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
@@ -264,8 +261,8 @@ class WorkReportHandlers:
     def _show_employee_edit_menu(self, chat_id: int):
         employees = self.db.get_employees()
         markup = types.InlineKeyboardMarkup(row_width=1)
-        for emp_id, nama in employees:
-            markup.add(types.InlineKeyboardButton(nama, callback_data=f"edit_emp_{emp_id}"))
+        for emp_id, nama, job_name in employees:
+            markup.add(types.InlineKeyboardButton(f"{nama} ({job_name})", callback_data=f"edit_emp_{emp_id}"))
         markup.add(types.InlineKeyboardButton("➕ Tambah Karyawan Baru", callback_data="add_employee"))
         nav = self._navigation_markup("nav_edit")
         for row in nav.keyboard:
@@ -282,11 +279,11 @@ class WorkReportHandlers:
                     callback_data=f"edit_task_{task_id}",
                 )
             )
-        markup.add(types.InlineKeyboardButton("➕ Tambah Task Baru", callback_data="add_task"))
+        markup.add(types.InlineKeyboardButton("➕ Tambah Pekerjaan Baru", callback_data="add_task"))
         nav = self._navigation_markup("nav_edit")
         for row in nav.keyboard:
             markup.row(*row)
-        self.bot.send_message(chat_id, "📋 Pilih task untuk diedit atau tambah baru:", reply_markup=markup)
+        self.bot.send_message(chat_id, "📋 Pilih pekerjaan untuk diedit atau tambah baru:", reply_markup=markup)
 
     def _show_report_edit_menu(self, chat_id: int):
         laporan = self.db.get_recent_reports(limit=10)
@@ -298,40 +295,10 @@ class WorkReportHandlers:
             markup.row(*row)
         self.bot.send_message(chat_id, "📄 Pilih laporan untuk diedit:", reply_markup=markup)
 
-    def _handle_assign_job(self, call: types.CallbackQuery):
-        data_pecah = call.data.split("_", 3)
-        if len(data_pecah) < 4:
-            self.bot.send_message(call.message.chat.id, "⚠️ Format data penugasan tidak valid.")
-            return
-
-        emp_id = int(data_pecah[2])
-        task_id = int(data_pecah[3])
-        nama_karyawan = self.db.get_employee_name(emp_id)
-        task_data = self.db.get_task(task_id)
-        task_name = task_data[1] if task_data else None
-
-        if not nama_karyawan or not task_name:
-            self.bot.send_message(call.message.chat.id, "⚠️ Karyawan atau task tidak ditemukan.")
-            return
-
-        if self.db.assign_task(emp_id, task_id):
-            self.bot.send_message(
-                call.message.chat.id,
-                f"✅ Task '{task_name}' berhasil ditugaskan kepada karyawan '{nama_karyawan}'!",
-                reply_markup=self._navigation_markup("nav_edit"),
-            )
-            return
-
-        self.bot.send_message(
-            call.message.chat.id,
-            f"⚠️ Karyawan '{nama_karyawan}' sudah memiliki task '{task_name}'. Silakan pilih task lain.",
-            reply_markup=self._navigation_markup("nav_edit"),
-        )
-
     def _handle_input_task(self, call: types.CallbackQuery):
         data_pecah = call.data.split("_", 2)
         if len(data_pecah) < 3:
-            self.bot.send_message(call.message.chat.id, "⚠️ Format task input tidak valid.")
+            self.bot.send_message(call.message.chat.id, "⚠️ Format pekerjaan input tidak valid.")
             return
 
         employee_id = int(data_pecah[1])
@@ -339,13 +306,13 @@ class WorkReportHandlers:
         employee_name = self.db.get_employee_name(employee_id)
         task_data = self.db.get_task(task_id)
         if not employee_name or not task_data:
-            self.bot.send_message(call.message.chat.id, "⚠️ Data karyawan atau task tidak ditemukan.")
+            self.bot.send_message(call.message.chat.id, "⚠️ Data karyawan atau pekerjaan tidak ditemukan.")
             return
 
         _, task_name, default_wage = task_data
         msg = self.bot.send_message(
             call.message.chat.id,
-            f"🧵 Task: {task_name}\n👤 Karyawan: {employee_name}\n\nMasukkan qty (jumlah unit), contoh: 50",
+            f"🧵 Pekerjaan: {task_name}\n👤 Karyawan: {employee_name}\n\nMasukkan qty (jumlah unit), contoh: 50",
         )
         self.bot.register_next_step_handler(
             msg,
@@ -359,8 +326,8 @@ class WorkReportHandlers:
 
     def _show_weekly_scope_options(self, chat_id: int):
         markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(types.InlineKeyboardButton("Semua Employee", callback_data="weekly_scope_all"))
-        markup.add(types.InlineKeyboardButton("Pilih 1 Employee", callback_data="weekly_scope_single"))
+        markup.add(types.InlineKeyboardButton("Semua Karyawan", callback_data="weekly_scope_all"))
+        markup.add(types.InlineKeyboardButton("Pilih 1 Karyawan", callback_data="weekly_scope_single"))
         nav = self._navigation_markup("nav_main")
         for row in nav.keyboard:
             markup.row(*row)
@@ -369,18 +336,21 @@ class WorkReportHandlers:
     def _show_weekly_employee_picker(self, chat_id: int):
         employees = self.db.get_employees()
         if not employees:
-            self.bot.send_message(chat_id, "⚠️ Belum ada data employee.")
+            self.bot.send_message(chat_id, "⚠️ Belum ada data karyawan.")
             return
 
         markup = types.InlineKeyboardMarkup(row_width=1)
-        for employee_id, nama in employees:
+        for employee_id, nama, job_name in employees:
             markup.add(
                 types.InlineKeyboardButton(
-                    nama,
+                    f"{nama} ({job_name})",
                     callback_data=f"weekly_scope_emp_{employee_id}",
                 )
             )
-        self.bot.send_message(chat_id, "👤 Pilih employee yang ingin dilihat:", reply_markup=markup)
+        nav = self._navigation_markup("nav_weekly_scope")
+        for row in nav.keyboard:
+            markup.row(*row)
+        self.bot.send_message(chat_id, "👤 Pilih karyawan yang ingin dilihat:", reply_markup=markup)
 
     def _show_weekly_options(self, chat_id: int, employee_id: int = None):
         scope_token = "all" if employee_id is None else str(employee_id)
@@ -449,40 +419,40 @@ class WorkReportHandlers:
                 self.bot.send_message(
                     chat_id,
                     "Belum ada data terstruktur untuk periode "
-                    f"{week_start} s/d {week_end}.\n"
+                    f"{self._format_date_id(week_start)} s/d {self._format_date_id(week_end)}.\n"
                     f"Ada {unstructured_count} laporan lama belum terstruktur.",
                     reply_markup=self._navigation_markup("nav_weekly_scope"),
                 )
                 return
             self.bot.send_message(
                 chat_id,
-                f"Belum ada data terstruktur untuk periode {week_start} s/d {week_end}.",
+                f"Belum ada data terstruktur untuk periode {self._format_date_id(week_start)} s/d {self._format_date_id(week_end)}.",
                 reply_markup=self._navigation_markup("nav_weekly_scope"),
             )
             return
 
         result_per_employee = {}
         grand_total = 0.0
-        for employee_name, task_name, total_qty, total_pay in rows:
+        for waktu, employee_name, task_name, total_qty, total_pay in rows:
             if employee_name not in result_per_employee:
                 result_per_employee[employee_name] = {"lines": [], "total": 0.0}
-            result_per_employee[employee_name]["lines"].append((task_name, total_qty, total_pay))
+            result_per_employee[employee_name]["lines"].append((waktu, task_name, total_qty, total_pay))
             result_per_employee[employee_name]["total"] += float(total_pay)
             grand_total += float(total_pay)
 
         lines = [
             "📊 Rekap Mingguan Karyawan",
-            f"Periode: {week_start} s/d {week_end} (Sabtu-Kamis)",
-            f"Filter: {filter_name if filter_name else 'Semua employee'}",
+            f"Periode: {self._format_date_id(week_start)} s/d {self._format_date_id(week_end)} (Sabtu-Kamis)",
+            f"Filter: {filter_name if filter_name else 'Semua karyawan'}",
             "",
         ]
 
         for employee_name, payload in result_per_employee.items():
             lines.append(f"👤 {employee_name}")
             lines.append(f"Total laporan: {report_counts.get(employee_name, 0)}")
-            for task_name, total_qty, total_pay in payload["lines"]:
+            for waktu, task_name, total_qty, total_pay in payload["lines"]:
                 lines.append(
-                    f"- {task_name}: {int(total_qty)} unit | Estimasi {self._format_rupiah(total_pay)}"
+                    f"- {self._format_datetime_id(waktu)} | {task_name}: {int(total_qty)} unit | Estimasi {self._format_rupiah(total_pay)}"
                 )
             lines.append(f"Subtotal: {self._format_rupiah(payload['total'])}")
             lines.append("")
@@ -593,7 +563,7 @@ class WorkReportHandlers:
         try:
             week_start_dt = datetime.strptime(raw_date, "%Y-%m-%d")
         except ValueError:
-            self.bot.reply_to(message, "⚠️ Format tanggal tidak valid. Gunakan YYYY-MM-DD.")
+            self.bot.reply_to(message, "⚠️ Format tanggal tidak valid. Gunakan YYYY-MM-DD.", reply_markup=self._navigation_markup("nav_weekly_scope"))
             return
 
         if week_start_dt.weekday() != 5:
@@ -622,6 +592,32 @@ class WorkReportHandlers:
     def _format_rupiah(self, value: float) -> str:
         amount = int(round(float(value)))
         return f"Rp{amount:,}".replace(",", ".")
+
+    def _format_date_id(self, date_str: str) -> str:
+        """Format tanggal menjadi: Hari, Tanggal Bulan Tahun (Sabtu, 21 Maret 2026)"""
+        bulan_indo = [
+            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+        ]
+        hari_indo = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+        
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        nama_hari = hari_indo[dt.weekday()]
+        nama_bulan = bulan_indo[dt.month - 1]
+        return f"{nama_hari}, {dt.day} {nama_bulan} {dt.year}"
+
+    def _format_datetime_id(self, datetime_str: str) -> str:
+        """Format datetime menjadi: Hari, Tanggal Bulan Tahun Jam:Menit"""
+        bulan_indo = [
+            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+        ]
+        hari_indo = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+        
+        dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+        nama_hari = hari_indo[dt.weekday()]
+        nama_bulan = bulan_indo[dt.month - 1]
+        return f"{nama_hari}, {dt.day} {nama_bulan} {dt.year}"
 
     def _show_user_reports(self, chat_id: int, user_id: str):
         data_laporan = self.db.get_recent_user_reports(user_id, limit=5)
@@ -659,45 +655,16 @@ class WorkReportHandlers:
 
         self.bot.reply_to(
             message,
-            f"✅ Karyawan '{new_name}' berhasil ditambahkan! Sekarang silakan pilih pekerjaan untuk karyawan ini.",
+            f"✅ Karyawan '{new_name}' berhasil ditambahkan!",
+            reply_markup=self._navigation_markup("nav_edit"),
         )
-
-        tasks = self.db.get_tasks()
-        if not tasks:
-            self.bot.reply_to(
-                message,
-                "⚠️ Belum ada task yang tersedia. Silakan tambahkan task terlebih dahulu.",
-            )
-            return
-
-        new_employee_id = self.db.get_employee_id_by_name(new_name)
-        if new_employee_id is None:
-            self.bot.reply_to(
-                message,
-                "⚠️ Gagal menemukan karyawan yang baru ditambahkan.",
-                reply_markup=self._navigation_markup("nav_edit"),
-            )
-            return
-
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for task_id, task_name, wage in tasks:
-            markup.add(
-                types.InlineKeyboardButton(
-                    f"{task_name} - {self._format_rupiah(wage)}",
-                    callback_data=f"assign_job_{new_employee_id}_{task_id}",
-                )
-            )
-        nav = self._navigation_markup("nav_edit")
-        for row in nav.keyboard:
-            markup.row(*row)
-        self.bot.send_message(message.chat.id, "📋 Pilih task untuk karyawan baru ini:", reply_markup=markup)
 
     def simpan_task_baru(self, message):
         task_name, wage = self._parse_task_input(message.text)
         if not task_name:
             self.bot.reply_to(
                 message,
-                "⚠️ Format tidak valid. Gunakan: Nama Task | UpahPerUnit",
+                "⚠️ Format tidak valid. Gunakan: Nama Pekerjaan | UpahPerUnit",
                 reply_markup=self._navigation_markup("nav_edit"),
             )
             return
@@ -705,14 +672,14 @@ class WorkReportHandlers:
         if self.db.add_task(task_name, wage):
             self.bot.reply_to(
                 message,
-                f"✅ Task '{task_name}' berhasil ditambahkan dengan upah {self._format_rupiah(wage)}!",
+                f"✅ Pekerjaan '{task_name}' berhasil ditambahkan dengan upah {self._format_rupiah(wage)}!",
                 reply_markup=self._navigation_markup("nav_edit"),
             )
             return
 
         self.bot.reply_to(
             message,
-            f"⚠️ Task '{task_name}' sudah terdaftar. Silakan coba nama lain.",
+            f"⚠️ Pekerjaan '{task_name}' sudah terdaftar. Silakan coba nama lain.",
             reply_markup=self._navigation_markup("nav_edit"),
         )
 
@@ -727,8 +694,7 @@ class WorkReportHandlers:
             return
 
         if self.db.update_employee(emp_id, nama_baru):
-            self.bot.reply_to(message, f"✅ Nama karyawan berhasil diubah menjadi '{nama_baru}'!")
-            self.edit_jobs_karyawan(message, emp_id)
+            self.bot.reply_to(message, f"✅ Nama karyawan berhasil diubah menjadi '{nama_baru}'!", reply_markup=self._navigation_markup("nav_edit"))
             return
 
         self.bot.reply_to(
@@ -737,31 +703,12 @@ class WorkReportHandlers:
             reply_markup=self._navigation_markup("nav_edit"),
         )
 
-    def edit_jobs_karyawan(self, message, emp_id: int):
-        tasks = self.db.get_tasks()
-        if not tasks:
-            self.bot.reply_to(
-                message,
-                "⚠️ Belum ada task yang tersedia. Silakan tambahkan task terlebih dahulu.",
-            )
-            return
-
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for task_id, task_name, wage in tasks:
-            markup.add(
-                types.InlineKeyboardButton(
-                    f"{task_name} - {self._format_rupiah(wage)}",
-                    callback_data=f"assign_job_{emp_id}_{task_id}",
-                )
-            )
-        self.bot.send_message(message.chat.id, "📋 Pilih task baru untuk karyawan ini:", reply_markup=markup)
-
     def simpan_edit_task(self, message, task_id: int):
         task_name, wage = self._parse_task_input(message.text)
         if not task_name:
             self.bot.reply_to(
                 message,
-                "⚠️ Format tidak valid. Gunakan: Nama Task | UpahPerUnit",
+                "⚠️ Format tidak valid. Gunakan: Nama Pekerjaan | UpahPerUnit",
                 reply_markup=self._navigation_markup("nav_edit"),
             )
             return
@@ -769,14 +716,14 @@ class WorkReportHandlers:
         if self.db.update_task(task_id, task_name, wage):
             self.bot.reply_to(
                 message,
-                f"✅ Task berhasil diubah menjadi '{task_name}' dengan upah {self._format_rupiah(wage)}!",
+                f"✅ Pekerjaan berhasil diubah menjadi '{task_name}' dengan upah {self._format_rupiah(wage)}!",
                 reply_markup=self._navigation_markup("nav_edit"),
             )
             return
 
         self.bot.reply_to(
             message,
-            f"⚠️ Task '{task_name}' sudah terdaftar. Silakan coba nama lain.",
+            f"⚠️ Pekerjaan '{task_name}' sudah terdaftar. Silakan coba nama lain.",
             reply_markup=self._navigation_markup("nav_edit"),
         )
 
@@ -801,8 +748,8 @@ class WorkReportHandlers:
         qty = int(raw_qty)
         msg = self.bot.send_message(
             message.chat.id,
-            f"💵 Upah default task ini: {self._format_rupiah(default_wage)} per unit.\n"
-            "Ketik upah override atau kirim '-' untuk pakai default.",
+            f"💵 Upah default pekerjaan ini: {self._format_rupiah(default_wage)} per unit.\n"
+            "Ketik upah baru atau kirim '' / '-' untuk pakai default.",
         )
         self.bot.register_next_step_handler(
             msg,
@@ -850,7 +797,7 @@ class WorkReportHandlers:
         waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         total_estimasi = qty * wage_per_unit
         detail = (
-            f"Task: {task_name}, Qty: {qty}, Upah/unit: {self._format_rupiah(wage_per_unit)}, "
+            f"Pekerjaan: {task_name}, Qty: {qty}, Upah/unit: {self._format_rupiah(wage_per_unit)}, "
             f"Estimasi: {self._format_rupiah(total_estimasi)}"
         )
 
@@ -868,7 +815,7 @@ class WorkReportHandlers:
             message,
             "✅ Laporan jahit berhasil disimpan!\n\n"
             f"👤 Nama: {employee_name}\n"
-            f"🧵 Task: {task_name}\n"
+            f"🧵 Pekerjaan: {task_name}\n"
             f"🔢 Qty: {qty}\n"
             f"💵 Upah/unit: {self._format_rupiah(wage_per_unit)}\n"
             f"💰 Estimasi bayar: {self._format_rupiah(total_estimasi)}",
